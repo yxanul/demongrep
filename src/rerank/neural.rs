@@ -3,6 +3,7 @@
 //! Provides second-pass reranking using fastembed's TextRerank
 //! with the Jina Reranker v1 Turbo model for improved accuracy.
 
+use crate::info_print;
 use anyhow::Result;
 use fastembed::{RerankInitOptions, RerankerModel, TextRerank};
 
@@ -29,7 +30,7 @@ impl NeuralReranker {
     /// Create a neural reranker with a specific model
     pub fn with_model(model: RerankerModel) -> Result<Self> {
         let model_name = model.to_string();
-        println!("Loading reranker model: {}", model_name);
+        info_print!("Loading reranker model: {}", model_name);
 
         let mut options = RerankInitOptions::default();
         options.model_name = model;
@@ -37,7 +38,7 @@ impl NeuralReranker {
 
         let reranker = TextRerank::try_new(options)?;
 
-        println!("Reranker model loaded successfully!");
+        info_print!("Reranker model loaded successfully!");
 
         Ok(Self {
             reranker,

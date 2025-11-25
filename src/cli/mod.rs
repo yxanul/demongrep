@@ -16,6 +16,10 @@ pub struct Cli {
     #[arg(short, long, global = true)]
     pub verbose: bool,
 
+    /// Suppress informational output (only show results/errors)
+    #[arg(short, long, global = true)]
+    pub quiet: bool,
+
     /// Override default store name
     #[arg(long, global = true)]
     pub store: Option<String>,
@@ -161,6 +165,11 @@ pub async fn run() -> Result<()> {
         std::process::exit(1);
     }
 
+    // Set quiet mode if requested
+    if cli.quiet {
+        crate::output::set_quiet(true);
+    }
+
     match cli.command {
         Commands::Search {
             query,
@@ -178,6 +187,10 @@ pub async fn run() -> Result<()> {
             rerank_top,
             filter_path,
         } => {
+            // Auto-enable quiet mode for JSON output
+            if json {
+                crate::output::set_quiet(true);
+            }
             crate::search::search(
                 &query,
                 max_results,

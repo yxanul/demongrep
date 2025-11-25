@@ -1,4 +1,5 @@
 use crate::embed::EmbeddedChunk;
+use crate::info_print;
 use anyhow::{anyhow, Result};
 use arroy::distances::Cosine;
 use arroy::{Database as ArroyDatabase, ItemId, Reader, Writer};
@@ -76,7 +77,7 @@ impl VectorStore {
     /// * `db_path` - Path to the database directory (e.g., ".demongrep.db")
     /// * `dimensions` - Dimensionality of embeddings (e.g., 384, 768)
     pub fn new(db_path: &Path, dimensions: usize) -> Result<Self> {
-        println!("📦 Opening vector database at: {}", db_path.display());
+        info_print!("📦 Opening vector database at: {}", db_path.display());
 
         // Create database directory (LMDB expects a directory, not a file)
         std::fs::create_dir_all(db_path)?;
@@ -109,7 +110,7 @@ impl VectorStore {
             false
         };
 
-        println!("✅ Database opened (next_id: {})", next_id);
+        info_print!("✅ Database opened (next_id: {})", next_id);
 
         Ok(Self {
             env,

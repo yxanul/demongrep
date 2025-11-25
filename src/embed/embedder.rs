@@ -1,3 +1,4 @@
+use crate::info_print;
 use anyhow::{anyhow, Result};
 use fastembed::{EmbeddingModel as FastEmbedModel, InitOptions, TextEmbedding};
 use ort::execution_providers::CPUExecutionProvider;
@@ -217,8 +218,8 @@ impl FastEmbedder {
 
     /// Create a new embedder with specified model
     pub fn with_model(model_type: ModelType) -> Result<Self> {
-        println!("📦 Loading embedding model: {}", model_type.name());
-        println!("   Dimensions: {}", model_type.dimensions());
+        info_print!("📦 Loading embedding model: {}", model_type.name());
+        info_print!("   Dimensions: {}", model_type.dimensions());
 
         // Use CPU execution provider with arena allocator for better memory performance
         let cpu_ep = CPUExecutionProvider::default()
@@ -232,7 +233,7 @@ impl FastEmbedder {
         )
             .map_err(|e| anyhow!("Failed to initialize embedding model: {}", e))?;
 
-        println!("✅ Model loaded successfully!");
+        info_print!("✅ Model loaded successfully!");
 
         Ok(Self { model, model_type })
     }
