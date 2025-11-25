@@ -4,16 +4,6 @@ Features planned to achieve parity with osgrep and beyond.
 
 ## High Priority
 
-### Neural Reranking
-Second-pass model to re-score top results for better accuracy.
-
-- [ ] Add cross-encoder reranking model (e.g., ms-marco-MiniLM)
-- [ ] Rerank top-N results (configurable, default 50)
-- [ ] Add `--rerank` flag to search command
-- [ ] Benchmark accuracy improvement vs latency cost
-
-**Why**: Cross-encoders are more accurate than bi-encoders but too slow for first-pass search.
-
 ### Claude Code Integration
 MCP server for direct integration with Claude Code.
 
@@ -147,3 +137,7 @@ Anonymous usage statistics.
 - [x] Hybrid Search (RRF) - Tantivy BM25 + vector similarity with RRF fusion
   - Hybrid search is default, use `--vector-only` to disable
   - Configurable RRF k parameter with `--rrf-k` (default 20)
+- [x] Neural Reranking - Jina Reranker v1 Turbo cross-encoder
+  - `--rerank` flag enables second-pass reranking
+  - `--rerank-top N` controls how many results to rerank (default 50)
+  - Score blending: 57.5% rerank + 42.5% RRF
