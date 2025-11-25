@@ -5,13 +5,18 @@ Fast, local semantic code search powered by Rust. A high-performance alternative
 ## Features
 
 - **Semantic Search**: Natural language queries like "where do we handle authentication?"
+- **Hybrid Search**: RRF fusion of vector similarity + Tantivy BM25 full-text search
+- **Neural Reranking**: Jina Reranker v1 Turbo cross-encoder for improved accuracy
 - **Smart Chunking**: Tree-sitter based AST-aware code chunking with 15+ chunk types
+- **Context Windows**: Surrounding code context (3 lines before/after each chunk)
 - **Rich Metadata**: Extracts signatures, docstrings, and context breadcrumbs
 - **Local Embeddings**: ONNX-powered embedding with fastembed (no API calls)
 - **Fast Vector Search**: arroy + LMDB for sub-second search after model load
 - **Live File Watching**: Incremental re-indexing on file changes
 - **HTTP Server Mode**: Background server with REST API
-- **Multi-Language**: Rust, Python, TypeScript, JavaScript, Go, Java, C, C++, and more
+- **MCP Server**: Claude Code integration via Model Context Protocol
+- **JSON Output**: Machine-readable output for scripting and AI agents
+- **Multi-Language**: Rust, Python, TypeScript, JavaScript (full AST support)
 - **Beautiful CLI**: Colored output, progress bars, multiple output modes
 - **Single Binary**: No Node.js required, just a static Rust binary
 
@@ -81,13 +86,16 @@ demongrep index --model minilm-l6-q
 ### Search with Natural Language
 
 ```bash
-# Basic search
+# Basic search (hybrid by default: vector + BM25 with RRF fusion)
 demongrep search "where do we handle authentication?"
+
+# Enable neural reranking for better accuracy
+demongrep search "error handling" --rerank
 
 # Show relevance scores and timing
 demongrep search "error handling" --scores
 
-# Show full content instead of snippets
+# Show full content with context windows
 demongrep search "database queries" --content
 
 # File paths only (like grep -l)
@@ -95,6 +103,15 @@ demongrep search "vector embeddings" --compact
 
 # Limit results
 demongrep search "parsing" --max-results 10 --per-file 2
+
+# Filter to specific directory
+demongrep search "tests" --filter-path src/chunker
+
+# JSON output for scripting/agents
+demongrep search "authentication" --json
+
+# Vector-only search (disable hybrid BM25)
+demongrep search "query" --vector-only
 
 # Sync database before search (re-index changed files)
 demongrep search "my query" --sync
@@ -117,6 +134,33 @@ demongrep serve --port 3333
 curl -X POST http://localhost:3333/search \
   -H "Content-Type: application/json" \
   -d '{"query": "authentication", "limit": 10}'
+```
+
+### MCP Server (Claude Code Integration)
+
+```bash
+# Start MCP server for Claude Code
+demongrep mcp
+
+# MCP server with specific project path
+demongrep mcp /path/to/project
+```
+
+**Available MCP Tools:**
+- `semantic_search(query, limit)` - Semantic code search
+- `get_file_chunks(path)` - Get all chunks from a file
+- `index_status()` - Check index health and stats
+
+**Claude Code Configuration** (`~/.claude/claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "demongrep": {
+      "command": "/path/to/demongrep",
+      "args": ["mcp", "/path/to/project"]
+    }
+  }
+}
 ```
 
 ### Manage Database
@@ -257,8 +301,11 @@ demongrep/
 | Live watching | Yes | Yes |
 | HTTP server | Yes | Yes |
 | Vector DB | LanceDB | arroy + LMDB |
-| Hybrid search | Yes (RRF) | Planned |
-| Reranking | Yes | Planned |
+| Hybrid search | Yes (RRF) | Yes (RRF) |
+| Reranking | Yes | Yes (Jina Reranker) |
+| MCP server | No | Yes |
+| JSON output | Yes | Yes |
+| Context windows | No | Yes |
 | Build deps | npm, cmake | cargo only |
 
 ## Development
