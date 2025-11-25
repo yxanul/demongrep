@@ -4,17 +4,6 @@ Features planned to achieve parity with osgrep and beyond.
 
 ## High Priority
 
-### Hybrid Search (RRF)
-Combine vector similarity with full-text search using Reciprocal Rank Fusion.
-
-- [ ] Integrate tantivy for BM25 full-text search
-- [ ] Build FTS index alongside vector index
-- [ ] Implement RRF score combination: `1/(k + rank_vector) + 1/(k + rank_fts)`
-- [ ] Add `--hybrid` flag to search command
-- [ ] Configurable RRF k parameter (default 60)
-
-**Why**: Hybrid search catches keyword matches that pure vector search might miss.
-
 ### Neural Reranking
 Second-pass model to re-score top results for better accuracy.
 
@@ -155,3 +144,6 @@ Anonymous usage statistics.
 - [x] `--sync` flag for search
 - [x] Multiple embedding model support
 - [x] Adaptive batch sizes
+- [x] Hybrid Search (RRF) - Tantivy BM25 + vector similarity with RRF fusion
+  - Hybrid search is default, use `--vector-only` to disable
+  - Configurable RRF k parameter with `--rrf-k` (default 20)
