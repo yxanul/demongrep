@@ -1,3 +1,6 @@
+// Allow dead code - this is a library with public APIs for future use
+#![allow(dead_code)]
+
 pub mod config;
 pub mod chunker;
 pub mod embed;

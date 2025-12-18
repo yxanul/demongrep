@@ -1,3 +1,6 @@
+// Allow dead code - public APIs for future use
+#![allow(dead_code)]
+
 mod cli;
 mod config;
 mod chunker;
