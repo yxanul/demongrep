@@ -1,4 +1,6 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::{Path, PathBuf};
@@ -10,25 +12,105 @@ use crate::file::FileWalker;
 use crate::fts::FtsStore;
 use crate::vectordb::VectorStore;
 
-/// Get the database path for a given project directory
-fn get_db_path(path: Option<PathBuf>) -> Result<PathBuf> {
+/// Get the database path for indexing
+fn get_index_db_path(path: Option<PathBuf>, global: bool) -> Result<PathBuf> {
     let project_path = path.unwrap_or_else(|| PathBuf::from("."));
     let canonical_path = project_path.canonicalize()?;
 
-    // Create database in the project directory
-    Ok(canonical_path.join(".demongrep.db"))
+    if global {
+        // Global mode: use home directory with project hash
+        let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
+        
+        // Create hash of canonical path
+        let mut hasher = DefaultHasher::new();
+        canonical_path.hash(&mut hasher);
+        let hash = hasher.finish();
+        
+        let global_base = home.join(".demongrep").join("stores");
+        std::fs::create_dir_all(&global_base)?;
+        
+        let db_path = global_base.join(format!("{:x}", hash));
+        
+        // Save project mapping for later reference
+        save_project_mapping(&canonical_path, &db_path)?;
+        
+        Ok(db_path)
+    } else {
+        // Local mode: use project directory
+        Ok(canonical_path.join(".demongrep.db"))
+    }
+}
+
+/// Get all database paths to search (local + global)
+pub fn get_search_db_paths(path: Option<PathBuf>) -> Result<Vec<PathBuf>> {
+    let mut paths = Vec::new();
+    
+    let project_path = path.unwrap_or_else(|| PathBuf::from("."));
+    let canonical_path = project_path.canonicalize()?;
+    
+    // 1. Check local database
+    let local_db = canonical_path.join(".demongrep.db");
+    if local_db.exists() {
+        paths.push(local_db);
+    }
+    
+    // 2. Check global database
+    if let Some(home) = dirs::home_dir() {
+        let mut hasher = DefaultHasher::new();
+        canonical_path.hash(&mut hasher);
+        let hash = hasher.finish();
+        
+        let global_db = home.join(".demongrep").join("stores").join(format!("{:x}", hash));
+        if global_db.exists() {
+            paths.push(global_db);
+        }
+    }
+    
+    Ok(paths)
+}
+
+/// Save project -> database mapping
+fn save_project_mapping(project_path: &Path, db_path: &Path) -> Result<()> {
+    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
+    let config_dir = home.join(".demongrep");
+    std::fs::create_dir_all(&config_dir)?;
+    
+    let mapping_file = config_dir.join("projects.json");
+    
+    // Load existing mappings
+    let mut mappings: std::collections::HashMap<String, String> = if mapping_file.exists() {
+        serde_json::from_str(&std::fs::read_to_string(&mapping_file)?)?
+    } else {
+        std::collections::HashMap::new()
+    };
+    
+    // Add new mapping
+    mappings.insert(
+        project_path.to_string_lossy().to_string(),
+        db_path.to_string_lossy().to_string()
+    );
+    
+    // Write back
+    std::fs::write(&mapping_file, serde_json::to_string_pretty(&mappings)?)?;
+    
+    Ok(())
 }
 
 /// Index a repository
-pub async fn index(path: Option<PathBuf>, dry_run: bool, force: bool, model: Option<ModelType>) -> Result<()> {
+pub async fn index(path: Option<PathBuf>, dry_run: bool, force: bool, global: bool, model: Option<ModelType>) -> Result<()> {
     let project_path = path.clone().unwrap_or_else(|| PathBuf::from("."));
-    let db_path = get_db_path(path)?;
+    let db_path = get_index_db_path(path, global)?;
     let model_type = model.unwrap_or_default();
 
     println!("{}", "🚀 Demongrep Indexer".bright_cyan().bold());
     println!("{}", "=".repeat(60));
     println!("📂 Project: {}", project_path.display());
     println!("💾 Database: {}", db_path.display());
+    if global {
+        println!("🌍 Mode: Global (shared across workspaces)");
+    } else {
+        println!("📍 Mode: Local (project-specific)");
+    }
     println!("🧠 Model: {} ({} dims)", model_type.name(), model_type.dimensions());
 
     if dry_run {
@@ -233,76 +315,110 @@ pub async fn list() -> Result<()> {
     println!("{}", "📚 Indexed Repositories".bright_cyan().bold());
     println!("{}", "=".repeat(60));
 
-    // TODO: Scan all repositories in ~/.demongrep/repos.json
-    // For now just check current directory
-
     // Check current directory
     let current_dir = std::env::current_dir()?;
-    let current_db = current_dir.join(".demongrep.db");
-
-    if current_db.exists() {
+    let db_paths = get_search_db_paths(Some(current_dir.clone()))?;
+    
+    if db_paths.is_empty() {
+        println!("\n{}", "No databases found for current directory".yellow());
+    } else {
         println!("\n{}", "Current Directory:".bright_green());
-        print_repo_stats(&current_dir, &current_db)?;
+        for db_path in &db_paths {
+            let db_type = if db_path.ends_with(".demongrep.db") { "Local" } else { "Global" };
+            println!("\n   {} Database:", db_type);
+            print_repo_stats(&current_dir, db_path)?;
+        }
     }
-
-    // TODO: Track indexed repositories globally in ~/.demongrep/repos.json
-    // For now, just show current directory
+    
+    // List all global databases
+    if let Some(home) = dirs::home_dir() {
+        let global_stores = home.join(".demongrep").join("stores");
+        if global_stores.exists() {
+            let mapping_file = home.join(".demongrep").join("projects.json");
+            if mapping_file.exists() {
+                if let Ok(content) = std::fs::read_to_string(&mapping_file) {
+                    if let Ok(mappings) = serde_json::from_str::<std::collections::HashMap<String, String>>(&content) {
+                        if !mappings.is_empty() {
+                            println!("\n{}", "All Global Databases:".bright_green());
+                            for (project, db) in mappings {
+                                println!("\n   📂 {}", project);
+                                if let Ok(db_path) = PathBuf::from(&db).canonicalize() {
+                                    print_repo_stats(&PathBuf::from(&project), &db_path)?;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     Ok(())
 }
 
 /// Show statistics about the vector database
 pub async fn stats(path: Option<PathBuf>) -> Result<()> {
-    let db_path = get_db_path(path)?;
-
-    if !db_path.exists() {
+    let db_paths = get_search_db_paths(path)?;
+    
+    if db_paths.is_empty() {
         println!("{}", "❌ No database found!".red());
-        println!("   Run {} first", "demongrep index".bright_cyan());
+        println!("   Run {} or {} first", 
+            "demongrep index".bright_cyan(),
+            "demongrep index --global".bright_cyan()
+        );
         return Ok(());
     }
+    
+    for db_path in db_paths {
+        let db_type = if db_path.ends_with(".demongrep.db") { "Local" } else { "Global" };
+        println!("{}", format!("📊 {} Database Statistics", db_type).bright_cyan().bold());
+        println!("{}", "=".repeat(60));
+        println!("💾 Database: {}", db_path.display());
 
-    println!("{}", "📊 Database Statistics".bright_cyan().bold());
-    println!("{}", "=".repeat(60));
-    println!("💾 Database: {}", db_path.display());
+        let store = VectorStore::new(&db_path, 384)?; // We'll need to store dimensions in metadata
+        let stats = store.stats()?;
 
-    let store = VectorStore::new(&db_path, 384)?; // We'll need to store dimensions in metadata
-    let stats = store.stats()?;
+        println!("\n{}", "Vector Store:".bright_green());
+        println!("   Total chunks: {}", stats.total_chunks);
+        println!("   Total files: {}", stats.total_files);
+        println!("   Indexed: {}", if stats.indexed { "✅ Yes" } else { "❌ No" });
+        println!("   Dimensions: {}", stats.dimensions);
 
-    println!("\n{}", "Vector Store:".bright_green());
-    println!("   Total chunks: {}", stats.total_chunks);
-    println!("   Total files: {}", stats.total_files);
-    println!("   Indexed: {}", if stats.indexed { "✅ Yes" } else { "❌ No" });
-    println!("   Dimensions: {}", stats.dimensions);
+        // Calculate database size
+        let mut total_size = 0u64;
+        for entry in std::fs::read_dir(&db_path)? {
+            let entry = entry?;
+            total_size += entry.metadata()?.len();
+        }
 
-    // Calculate database size
-    let mut total_size = 0u64;
-    for entry in std::fs::read_dir(&db_path)? {
-        let entry = entry?;
-        total_size += entry.metadata()?.len();
+        println!("\n{}", "Storage:".bright_green());
+        println!("   Database size: {:.2} MB", total_size as f64 / (1024.0 * 1024.0));
+        println!("   Avg per chunk: {:.2} KB", (total_size as f64 / stats.total_chunks as f64) / 1024.0);
+        println!();
     }
-
-    println!("\n{}", "Storage:".bright_green());
-    println!("   Database size: {:.2} MB", total_size as f64 / (1024.0 * 1024.0));
-    println!("   Avg per chunk: {:.2} KB", (total_size as f64 / stats.total_chunks as f64) / 1024.0);
 
     Ok(())
 }
 
 /// Clear the vector database
 pub async fn clear(path: Option<PathBuf>, yes: bool) -> Result<()> {
-    let db_path = get_db_path(path)?;
-
-    if !db_path.exists() {
+    let db_paths = get_search_db_paths(path)?;
+    
+    if db_paths.is_empty() {
         println!("{}", "❌ No database found!".red());
         return Ok(());
     }
 
     println!("{}", "🗑️  Clear Database".bright_yellow().bold());
     println!("{}", "=".repeat(60));
-    println!("💾 Database: {}", db_path.display());
+    
+    for db_path in &db_paths {
+        let db_type = if db_path.ends_with(".demongrep.db") { "Local" } else { "Global" };
+        println!("💾 {} Database: {}", db_type, db_path.display());
+    }
 
     if !yes {
-        println!("\n{}", "⚠️  This will delete all indexed data!".yellow());
+        println!("\n{}", "⚠️  This will delete all indexed data from these databases!".yellow());
         print!("Are you sure? (y/N): ");
         use std::io::{self, Write};
         io::stdout().flush()?;
@@ -316,10 +432,12 @@ pub async fn clear(path: Option<PathBuf>, yes: bool) -> Result<()> {
         }
     }
 
-    println!("\n🔄 Removing database...");
-    std::fs::remove_dir_all(&db_path)?;
-
-    println!("{}", "✅ Database cleared!".green());
+    for db_path in db_paths {
+        let db_type = if db_path.ends_with(".demongrep.db") { "Local" } else { "Global" };
+        println!("\n🔄 Removing {} database...", db_type);
+        std::fs::remove_dir_all(&db_path)?;
+        println!("{}", format!("✅ {} database cleared!", db_type).green());
+    }
 
     Ok(())
 }

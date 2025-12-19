@@ -104,6 +104,10 @@ pub enum Commands {
         /// Force full re-index
         #[arg(short, long)]
         force: bool,
+
+        /// Index to global database in home directory instead of local .demongrep.db
+        #[arg(short = 'g', long)]
+        global: bool,
     },
 
     /// Run a background server with live file watching
@@ -214,7 +218,8 @@ pub async fn run() -> Result<()> {
             path,
             dry_run,
             force,
-        } => crate::index::index(path, dry_run, force, model_type).await,
+            global,
+        } => crate::index::index(path, dry_run, force, global, model_type).await,
         Commands::Serve { port, path } => crate::server::serve(port, path).await,
         Commands::List => crate::index::list().await,
         Commands::Stats { path } => crate::index::stats(path).await,
