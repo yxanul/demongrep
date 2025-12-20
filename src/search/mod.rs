@@ -9,7 +9,8 @@ use crate::chunker::SemanticChunker;
 use crate::embed::{EmbeddingService, ModelType};
 use crate::file::FileWalker;
 use crate::fts::FtsStore;
-use crate::rerank::{rrf_fusion, vector_only, FusedResult, NeuralReranker, DEFAULT_RRF_K};
+use crate::index::get_search_db_paths;
+use crate::rerank::{rrf_fusion, vector_only, FusedResult, NeuralReranker};
 use crate::vectordb::VectorStore;
 
 /// JSON output format for search results
@@ -139,7 +140,7 @@ pub async fn search(
         // Perform sync if requested
         if sync {
             if !json {
-                let db_type = if db_path.ends_with(".demongrep.db") { "Local" } else { "Global" };
+                let db_type: &str = if db_path.ends_with(".demongrep.db") { "Local" } else { "Global" };
                 println!("{}", format!("🔄 Syncing {} database...", db_type).yellow());
             }
             sync_database(&db_path, model_type)?;

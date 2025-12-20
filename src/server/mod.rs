@@ -1,4 +1,5 @@
 use anyhow::Result;
+use anyhow::anyhow;
 use axum::{
     extract::{Json, State},
     http::StatusCode,
@@ -488,7 +489,7 @@ async fn handle_file_modified(state: &ServerState, path: &PathBuf) -> Result<()>
         .ok_or_else(|| anyhow!("No local database available"))?;
     
     // Check if file needs re-indexing
-    let file_meta_read = file_meta.read().await;
+    let file_meta_read: tokio::sync::RwLockReadGuard<'_, FileMetaStore> = file_meta.read().await;
     let (needs_reindex, old_chunk_ids) = file_meta_read.check_file(path)?;
     drop(file_meta_read);
 
@@ -517,7 +518,7 @@ async fn handle_file_modified(state: &ServerState, path: &PathBuf) -> Result<()>
 
     if chunks.is_empty() {
         // Update metadata with no chunks
-        let mut file_meta_write = file_meta.write().await;
+        let mut file_meta_write: tokio::sync::RwLockWriteGuard<'_, FileMetaStore> = file_meta.write().await;
         file_meta_write.update_file(path, vec![])?;
         return Ok(());
     }
@@ -537,7 +538,7 @@ async fn handle_file_modified(state: &ServerState, path: &PathBuf) -> Result<()>
     };
 
     // Update metadata
-    let mut file_meta_write = file_meta.write().await;
+    let mut file_meta_write: tokio::sync::RwLockWriteGuard<'_, FileMetaStore> = file_meta.write().await;
     file_meta_write.update_file(path, chunk_ids)?;
 
     Ok(())
@@ -548,7 +549,7 @@ async fn handle_file_deleted(state: &ServerState, path: &PathBuf) -> Result<()> 
     let file_meta = state.file_meta.as_ref()
         .ok_or_else(|| anyhow!("No local database available"))?;
     
-    let mut file_meta_write = file_meta.write().await;
+    let mut file_meta_write: tokio::sync::RwLockWriteGuard<'_, FileMetaStore> = file_meta.write().await;
 
     if let Some(meta) = file_meta_write.remove_file(path) {
         if !meta.chunk_ids.is_empty() {
