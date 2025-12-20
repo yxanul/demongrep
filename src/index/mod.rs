@@ -327,6 +327,7 @@ pub async fn index(path: Option<PathBuf>, dry_run: bool, force: bool, global: bo
             &chunk.chunk.path,
             chunk.chunk.signature.as_deref(),
             &format!("{:?}", chunk.chunk.kind),
+            &chunk.chunk.string_literals,
         )?;
     }
     fts_store.commit()?;

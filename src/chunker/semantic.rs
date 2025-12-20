@@ -167,7 +167,7 @@ impl SemanticChunker {
                 .to_string();
 
             let mut chunk = Chunk::new(
-                content,
+                content.clone(),
                 node.start_position().row,
                 node.end_position().row + 1, // tree-sitter uses 0-based, we use line count
                 kind,
@@ -176,6 +176,7 @@ impl SemanticChunker {
             chunk.context = new_context.clone();
             chunk.signature = signature;
             chunk.docstring = docstring;
+            chunk.string_literals = Chunk::extract_string_literals(&content);
 
             chunks.push(chunk);
 
@@ -209,8 +210,9 @@ impl SemanticChunker {
 
             if !chunk_lines.is_empty() {
                 let content = chunk_lines.join("\n");
-                let mut chunk = Chunk::new(content, i, end, ChunkKind::Block, path_str.clone());
+                let mut chunk = Chunk::new(content.clone(), i, end, ChunkKind::Block, path_str.clone());
                 chunk.context = context.clone();
+                chunk.string_literals = Chunk::extract_string_literals(&content);
                 chunks.push(chunk);
             }
 
@@ -358,13 +360,14 @@ impl<'a> GapTracker<'a> {
                     if !gap_content.trim().is_empty() {
                         let kind = Self::classify_gap(&gap_content);
                         let mut chunk = Chunk::new(
-                            gap_content,
+                            gap_content.clone(),
                             start,
                             i,
                             kind,
                             path_str.clone(),
                         );
                         chunk.context = context.clone();
+                        chunk.string_literals = Chunk::extract_string_literals(&gap_content);
                         gaps.push(chunk);
                     }
 
@@ -381,13 +384,14 @@ impl<'a> GapTracker<'a> {
             if !gap_content.trim().is_empty() {
                 let kind = Self::classify_gap(&gap_content);
                 let mut chunk = Chunk::new(
-                    gap_content,
+                    gap_content.clone(),
                     start,
                     self.lines.len(),
                     kind,
                     path_str.clone(),
                 );
                 chunk.context = context.clone();
+                chunk.string_literals = Chunk::extract_string_literals(&gap_content);
                 gaps.push(chunk);
             }
         }

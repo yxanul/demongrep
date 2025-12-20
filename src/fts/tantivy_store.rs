@@ -34,6 +34,7 @@ pub struct FtsStore {
     path_field: Field,
     signature_field: Field,
     kind_field: Field,
+    string_literals_field: Field,
 }
 
 impl FtsStore {
@@ -63,6 +64,9 @@ impl FtsStore {
         // Kind - stored for filtering (function, class, etc)
         let kind_field = schema_builder.add_text_field("kind", STRING | STORED);
 
+        // String literals - indexed for literal value search
+        let string_literals_field = schema_builder.add_text_field("string_literals", TEXT);
+
         let schema = schema_builder.build();
 
         // Open or create index
@@ -86,6 +90,7 @@ impl FtsStore {
             path_field,
             signature_field,
             kind_field,
+            string_literals_field,
         })
     }
 
@@ -110,6 +115,11 @@ impl FtsStore {
             .map_err(|_| anyhow!("Missing signature field"))?;
         let kind_field = schema.get_field("kind")
             .map_err(|_| anyhow!("Missing kind field"))?;
+        let string_literals_field = schema.get_field("string_literals")
+            .unwrap_or_else(|_| {
+                // For backward compatibility with old indexes
+                schema.get_field("content").unwrap()
+            });
 
         let reader = index.reader()?;
 
@@ -123,6 +133,7 @@ impl FtsStore {
             path_field,
             signature_field,
             kind_field,
+            string_literals_field,
         })
     }
 
@@ -144,6 +155,7 @@ impl FtsStore {
         path: &str,
         signature: Option<&str>,
         kind: &str,
+        string_literals: &[String],
     ) -> Result<()> {
         self.ensure_writer()?;
 
@@ -153,6 +165,7 @@ impl FtsStore {
         let path_field = self.path_field;
         let signature_field = self.signature_field;
         let kind_field = self.kind_field;
+        let string_literals_field = self.string_literals_field;
 
         let writer = self.writer.as_mut().unwrap();
 
@@ -164,6 +177,12 @@ impl FtsStore {
 
         if let Some(sig) = signature {
             doc.add_text(signature_field, sig);
+        }
+
+        // Add string literals as a space-separated field for better search
+        if !string_literals.is_empty() {
+            let literals_text = string_literals.join(" ");
+            doc.add_text(string_literals_field, literals_text);
         }
 
         writer.add_document(doc)?;
@@ -204,11 +223,15 @@ impl FtsStore {
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<FtsResult>> {
         let searcher = self.reader.searcher();
 
-        // Parse query against content and signature fields
-        let query_parser = QueryParser::for_index(
+        // Parse query against content, signature, and string_literals fields
+        let mut query_parser = QueryParser::for_index(
             &self.index,
-            vec![self.content_field, self.signature_field],
+            vec![self.content_field, self.signature_field, self.string_literals_field],
         );
+        
+        // Set conjunction mode (AND) by default for multi-term queries
+        // This makes "embedding model" require BOTH terms to be present
+        query_parser.set_conjunction_by_default();
 
         // Parse query, fall back to match-all on error
         let parsed_query = match query_parser.parse_query(query) {
@@ -282,9 +305,9 @@ mod tests {
         let mut store = FtsStore::new(&db_path)?;
 
         // Add some chunks
-        store.add_chunk(1, "fn hello_world() { println!(\"Hello!\"); }", "src/main.rs", Some("hello_world"), "function")?;
-        store.add_chunk(2, "struct UserConfig { name: String, age: u32 }", "src/config.rs", Some("UserConfig"), "struct")?;
-        store.add_chunk(3, "fn process_data(data: Vec<u8>) -> Result<()>", "src/processor.rs", Some("process_data"), "function")?;
+        store.add_chunk(1, "fn hello_world() { println!(\"Hello!\"); }", "src/main.rs", Some("hello_world"), "function", &["Hello!".to_string()])?;
+        store.add_chunk(2, "struct UserConfig { name: String, age: u32 }", "src/config.rs", Some("UserConfig"), "struct", &[])?;
+        store.add_chunk(3, "fn process_data(data: Vec<u8>) -> Result<()>", "src/processor.rs", Some("process_data"), "function", &[])?;
 
         store.commit()?;
 
@@ -313,8 +336,8 @@ mod tests {
 
         let mut store = FtsStore::new(&db_path)?;
 
-        store.add_chunk(1, "test content one", "file1.rs", None, "block")?;
-        store.add_chunk(2, "test content two", "file2.rs", None, "block")?;
+        store.add_chunk(1, "test content one", "file1.rs", None, "block", &[])?;
+        store.add_chunk(2, "test content two", "file2.rs", None, "block", &[])?;
         store.commit()?;
 
         // Should find both
@@ -329,6 +352,39 @@ mod tests {
         let results = store.search("test content", 10)?;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].chunk_id, 2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_fts_string_literals() -> Result<()> {
+        let dir = tempdir()?;
+        let db_path = dir.path().to_path_buf();
+
+        let mut store = FtsStore::new(&db_path)?;
+
+        // Add chunks with string literals
+        store.add_chunk(
+            1, 
+            "requestHeaders = [(\"API-VERSION\", \"2\")]", 
+            "src/api.rs", 
+            None, 
+            "block",
+            &["API-VERSION".to_string(), "2".to_string()],
+        )?;
+        store.add_chunk(
+            2, 
+            "const version = \"1.0\";", 
+            "src/version.rs", 
+            None, 
+            "block",
+            &["1.0".to_string()],
+        )?;
+        store.commit()?;
+
+        // Search for "api-version 2" should find the first chunk
+        let results = store.search("api-version 2", 10)?;
+        assert!(!results.is_empty(), "Should find chunk with API-VERSION and 2");
 
         Ok(())
     }

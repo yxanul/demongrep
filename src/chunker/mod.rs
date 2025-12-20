@@ -57,6 +57,9 @@ pub struct Chunk {
 
     /// Lines of code immediately after this chunk (for context)
     pub context_next: Option<String>,
+
+    /// Extracted string literals for better search (e.g., "API-VERSION", "2")
+    pub string_literals: Vec<String>,
 }
 
 impl Chunk {
@@ -84,6 +87,7 @@ impl Chunk {
             hash,
             context_prev: None,
             context_next: None,
+            string_literals: Vec::new(),
         }
     }
 
@@ -107,6 +111,40 @@ impl Chunk {
     /// Get the size of this chunk in bytes
     pub fn size_bytes(&self) -> usize {
         self.content.len()
+    }
+
+    /// Extract string literals from content for better search
+    /// Extracts strings from common patterns like "string", 'string', `string`
+    pub fn extract_string_literals(content: &str) -> Vec<String> {
+        let mut literals = Vec::new();
+        let mut chars = content.chars().peekable();
+        
+        while let Some(ch) = chars.next() {
+            if ch == '"' || ch == '\'' || ch == '`' {
+                let quote = ch;
+                let mut literal = String::new();
+                let mut escaped = false;
+                
+                while let Some(ch) = chars.next() {
+                    if escaped {
+                        escaped = false;
+                        literal.push(ch);
+                    } else if ch == '\\' {
+                        escaped = true;
+                    } else if ch == quote {
+                        // End of string literal
+                        if !literal.trim().is_empty() && literal.len() < 100 {
+                            literals.push(literal);
+                        }
+                        break;
+                    } else {
+                        literal.push(ch);
+                    }
+                }
+            }
+        }
+        
+        literals
     }
 }
 
@@ -142,5 +180,35 @@ mod tests {
     #[test]
     fn test_chunker() {
         // TODO: Add tests
+    }
+
+    #[test]
+    fn test_extract_string_literals() {
+        let code = r#"
+            let x = "hello";
+            let y = 'world';
+            let headers = [("API-VERSION", "2")];
+            let msg = `template string`;
+        "#;
+        
+        let literals = Chunk::extract_string_literals(code);
+        
+        assert!(literals.contains(&"hello".to_string()));
+        assert!(literals.contains(&"world".to_string()));
+        assert!(literals.contains(&"API-VERSION".to_string()));
+        assert!(literals.contains(&"2".to_string()));
+        assert!(literals.contains(&"template string".to_string()));
+        
+        assert_eq!(literals.len(), 5);
+    }
+
+    #[test]
+    fn test_extract_string_literals_with_escapes() {
+        let code = "let msg = \"Hello \\\"World\\\"!\";";
+        
+        let literals = Chunk::extract_string_literals(code);
+        
+        assert_eq!(literals.len(), 1);
+        assert_eq!(literals[0], "Hello \"World\"!");
     }
 }
