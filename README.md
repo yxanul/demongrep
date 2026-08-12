@@ -1,3 +1,5 @@
+
+
 # demongrep
 
 **Fast, local semantic code search powered by Rust.**
@@ -199,6 +201,7 @@ demongrep index [PATH] [OPTIONS]
 |--------|-------|-------------|
 | `--dry-run` | | Preview what would be indexed without indexing |
 | `--force` | `-f` | Delete existing index and rebuild from scratch |
+| `--model` | | Specify embedding model to use |
 
 #### Examples
 
@@ -640,7 +643,7 @@ demongrep search "query" --model jina-code
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DEMONGREP_BATCH_SIZE` | Embedding batch size | Auto (based on model) |
+| `DEMONGREP_BATCH_SIZE` | Embedding batch size | 32 |
 | `RUST_LOG` | Logging level | `demongrep=info` |
 
 ### Ignore Files
