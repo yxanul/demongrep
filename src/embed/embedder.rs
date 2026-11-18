@@ -1,7 +1,7 @@
 use crate::info_print;
 use anyhow::{anyhow, Result};
 use fastembed::{EmbeddingModel as FastEmbedModel, InitOptions, TextEmbedding};
-use ort::execution_providers::CPUExecutionProvider;
+use ort::ep::CPU as CPUExecutionProvider;
 
 /// Available embedding models
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

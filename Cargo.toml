@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["demongrep contributors"]
 license = "Apache-2.0"
 description = "Fast, local semantic code search powered by Rust"
-repository = "https://github.com/yourusername/demongrep"
+repository = "https://github.com/yxanul/demongrep"
 readme = "README.md"
 keywords = ["search", "semantic", "grep", "embeddings", "code"]
 categories = ["command-line-utilities", "development-tools"]
@@ -27,7 +27,7 @@ thiserror = "1.0"
 
 # ML & Embeddings
 fastembed = "5.0"
-ort = { version = "2.0.0-rc.10", features = ["download-binaries", "copy-dylibs"] }
+ort = { version = "2.0.0-rc.13", features = ["download-binaries", "copy-dylibs"] }
 ndarray = "0.16"
 hf-hub = "0.3"
 
