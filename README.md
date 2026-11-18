@@ -73,6 +73,12 @@ winget install -e --id Google.Protobuf
 choco install protoc
 ```
 
+### From crates.io
+
+```bash
+cargo install demongrep --locked
+```
+
 ### Building from Source
 
 ```bash
