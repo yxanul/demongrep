@@ -47,6 +47,10 @@ pub enum ModelType {
     ModernBertEmbedLarge,
 }
 
+/// Version of the query/document prefix scheme, stored in index metadata.
+/// Indexes with an older version may need re-indexing for models with document prefixes.
+pub const PREFIX_VERSION: u64 = 1;
+
 impl ModelType {
     pub fn to_fastembed_model(&self) -> FastEmbedModel {
         match self {
@@ -115,6 +119,41 @@ impl ModelType {
             Self::MultilingualE5Small => "intfloat/multilingual-e5-small",
             Self::MxbaiEmbedLargeV1 => "mixedbread-ai/mxbai-embed-large-v1",
             Self::ModernBertEmbedLarge => "lightonai/modernbert-embed-large",
+        }
+    }
+
+    /// Prefix the model expects in front of search queries.
+    ///
+    /// Several retrieval models are trained asymmetrically and perform noticeably
+    /// worse when queries/documents are embedded without their task prefix.
+    pub fn query_prefix(&self) -> &'static str {
+        match self {
+            Self::NomicEmbedTextV1
+            | Self::NomicEmbedTextV15
+            | Self::NomicEmbedTextV15Q
+            | Self::ModernBertEmbedLarge => "search_query: ",
+            Self::MultilingualE5Small => "query: ",
+            Self::BGESmallENV15
+            | Self::BGESmallENV15Q
+            | Self::BGEBaseENV15
+            | Self::BGELargeENV15
+            | Self::MxbaiEmbedLargeV1 => "Represent this sentence for searching relevant passages: ",
+            _ => "",
+        }
+    }
+
+    /// Prefix the model expects in front of indexed documents (code chunks).
+    ///
+    /// Changing this for a model invalidates existing indexes built with it,
+    /// so bump `PREFIX_VERSION` whenever a document prefix changes.
+    pub fn document_prefix(&self) -> &'static str {
+        match self {
+            Self::NomicEmbedTextV1
+            | Self::NomicEmbedTextV15
+            | Self::NomicEmbedTextV15Q
+            | Self::ModernBertEmbedLarge => "search_document: ",
+            Self::MultilingualE5Small => "passage: ",
+            _ => "",
         }
     }
 
@@ -315,6 +354,26 @@ impl Default for FastEmbedder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_model_prefixes() {
+        // Symmetric models: no prefixes
+        assert_eq!(ModelType::AllMiniLML6V2Q.query_prefix(), "");
+        assert_eq!(ModelType::AllMiniLML6V2Q.document_prefix(), "");
+        assert_eq!(ModelType::JinaEmbeddingsV2BaseCode.query_prefix(), "");
+
+        // Nomic: both sides prefixed
+        assert_eq!(ModelType::NomicEmbedTextV15.query_prefix(), "search_query: ");
+        assert_eq!(ModelType::NomicEmbedTextV15.document_prefix(), "search_document: ");
+
+        // E5: query/passage
+        assert_eq!(ModelType::MultilingualE5Small.query_prefix(), "query: ");
+        assert_eq!(ModelType::MultilingualE5Small.document_prefix(), "passage: ");
+
+        // BGE: query instruction only, documents unchanged
+        assert!(!ModelType::BGESmallENV15.query_prefix().is_empty());
+        assert_eq!(ModelType::BGESmallENV15.document_prefix(), "");
+    }
 
     #[test]
     fn test_model_type_dimensions() {

@@ -80,8 +80,8 @@ choco install protoc
 git clone https://github.com/yxanul/demongrep.git
 cd demongrep
 
-# Build release binary
-cargo build --release
+# Build release binary (--locked uses the exact dependency versions in Cargo.lock)
+cargo build --release --locked
 
 # The binary is at target/release/demongrep
 # Optionally, copy to your PATH:
@@ -631,6 +631,19 @@ demongrep search "query" --model jina-code
 ```
 
 **Note:** The model used for indexing is saved in metadata. If you search with a different model, you may get poor results. Use `--force` to re-index with a new model.
+
+### Query & Document Prefixes
+
+Some retrieval models are trained with task prefixes and lose accuracy without them. demongrep adds them automatically:
+
+| Models | Query prefix | Document prefix |
+|--------|--------------|-----------------|
+| Nomic (`nomic-v1`, `nomic-v1.5`, `nomic-v1.5-q`), ModernBERT (`modernbert-large`) | `search_query: ` | `search_document: ` |
+| E5 (`e5-multilingual`) | `query: ` | `passage: ` |
+| BGE (`bge-*`), MxBai (`mxbai-large`) | `Represent this sentence for searching relevant passages: ` | *(none)* |
+| MiniLM, Jina Code | *(none)* | *(none)* |
+
+If you built a Nomic, E5 or ModernBERT index before prefixes were added, `demongrep search` will warn you. Run `demongrep index --force` to rebuild it.
 
 ---
 

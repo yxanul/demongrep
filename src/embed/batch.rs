@@ -155,6 +155,9 @@ impl BatchEmbedder {
     fn prepare_text(&self, chunk: &Chunk) -> String {
         let mut parts = Vec::new();
 
+        // Model-specific document prefix (e.g. "search_document: " for Nomic)
+        let prefix = self.embedder.lock().unwrap().model_type().document_prefix();
+
         // Add context breadcrumbs (e.g., "File: main.rs > Class: Server")
         if !chunk.context.is_empty() {
             let context = chunk.context.join(" > ");
@@ -178,7 +181,7 @@ impl BatchEmbedder {
         // Add main content
         parts.push(format!("Code:\n{}", chunk.content));
 
-        parts.join("\n")
+        format!("{}{}", prefix, parts.join("\n"))
     }
 
     /// Get embedding dimensions

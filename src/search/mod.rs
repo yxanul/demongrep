@@ -62,6 +62,15 @@ fn read_metadata(db_path: &PathBuf) -> Option<(String, usize)> {
     None
 }
 
+/// Read the prefix scheme version from database metadata (0 if absent)
+fn read_prefix_version(db_path: &PathBuf) -> u64 {
+    std::fs::read_to_string(db_path.join("metadata.json"))
+        .ok()
+        .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+        .and_then(|j| j.get("prefix_version").and_then(|v| v.as_u64()))
+        .unwrap_or(0)
+}
+
 /// Search the codebase (searches both local and global databases)
 #[allow(clippy::too_many_arguments)]
 pub async fn search(
@@ -105,10 +114,8 @@ pub async fn search(
 
     // Collect all results from all databases
     let mut all_results: Vec<crate::vectordb::SearchResult> = Vec::new();
-    let mut total_embed_duration = Duration::ZERO;
     let mut total_search_duration = Duration::ZERO;
     let mut total_load_duration = Duration::ZERO;
-    let mut model_load_duration = Duration::ZERO;
     
     // We'll use the first database's model/dimensions, or override
     let (model_type, dimensions) = if let Some(override_model) = model_override {
@@ -124,15 +131,29 @@ pub async fn search(
         (ModelType::default(), 384)
     };
     
+    // Warn if an index was built before document prefixes were applied for this model
+    if !model_type.document_prefix().is_empty() {
+        for db_path in &db_paths {
+            if read_prefix_version(db_path) < crate::embed::PREFIX_VERSION {
+                eprintln!(
+                    "{} {} {}",
+                    "⚠️  Index at".yellow(),
+                    db_path.display(),
+                    "was built without model-specific prefixes. Re-index with `demongrep index --force` for better accuracy.".yellow()
+                );
+            }
+        }
+    }
+
     // Initialize embedding service once (shared across all databases)
     let start = Instant::now();
     let mut embedding_service = EmbeddingService::with_model(model_type)?;
-    model_load_duration = start.elapsed();
+    let model_load_duration = start.elapsed();
     
     // Embed query once
     let start = Instant::now();
     let query_embedding = embedding_service.embed_query(query)?;
-    total_embed_duration = start.elapsed();
+    let total_embed_duration = start.elapsed();
     
     // Search in each database
     for db_path in db_paths {

@@ -2,7 +2,7 @@ mod embedder;
 mod batch;
 mod cache;
 
-pub use embedder::{FastEmbedder, ModelType};
+pub use embedder::{FastEmbedder, ModelType, PREFIX_VERSION};
 pub use batch::{BatchEmbedder, EmbeddedChunk};
 pub use cache::{CachedBatchEmbedder, CacheStats};
 
@@ -48,7 +48,8 @@ impl EmbeddingService {
     pub fn embed_query(&mut self, query: &str) -> Result<Vec<f32>> {
         // Access the batch embedder's embedder via mutex
         let embedder_arc = &self.cached_embedder.batch_embedder.embedder;
-        embedder_arc.lock().unwrap().embed_one(query)
+        let text = format!("{}{}", self.model_type.query_prefix(), query);
+        embedder_arc.lock().unwrap().embed_one(&text)
     }
 
     /// Get embedding dimensions

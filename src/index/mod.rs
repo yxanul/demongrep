@@ -553,7 +553,19 @@ pub async fn index(path: Option<PathBuf>, dry_run: bool, _force: bool, global: b
     println!("✅ File metadata saved");
 
     // Save model metadata (for backwards compatibility with tools that read metadata.json)
+    // On incremental runs, unchanged chunks keep their old embeddings, so carry the
+    // previous prefix version forward (missing = 0, i.e. built before prefixes existed).
+    let prefix_version = if is_incremental {
+        std::fs::read_to_string(db_path.join("metadata.json"))
+            .ok()
+            .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+            .and_then(|j| j.get("prefix_version").and_then(|v| v.as_u64()))
+            .unwrap_or(0)
+    } else {
+        crate::embed::PREFIX_VERSION
+    };
     let metadata = serde_json::json!({
+        "prefix_version": prefix_version,
         "model_short_name": embedding_service.model_short_name(),
         "model_name": embedding_service.model_name(),
         "dimensions": embedding_service.dimensions(),
