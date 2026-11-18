@@ -9,6 +9,7 @@ repository = "https://github.com/yxanul/demongrep"
 readme = "README.md"
 keywords = ["search", "semantic", "grep", "embeddings", "code"]
 categories = ["command-line-utilities", "development-tools"]
+include = ["src/**/*.rs", "examples/**/*.rs", "Cargo.toml", "Cargo.lock", "README.md"]
 
 [lib]
 name = "demongrep"
